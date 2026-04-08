@@ -262,6 +262,14 @@ export class Game {
     this.endTime = Date.now();
   }
 
+  setQState(row, col, target) {
+    if (this.gameOver || this.won) return;
+    if (!this._inBounds(row, col)) return;
+    const cell = this.cells[row][col];
+    if (cell.state === REVEALED) return;
+    cell.state = cell.state === target ? HIDDEN : target;
+  }
+
   cycleFlag(row, col) {
     if (this.gameOver || this.won) return;
     if (!this._inBounds(row, col)) return;

@@ -213,6 +213,10 @@ boardEl.addEventListener('mouseup', e => {
   if (wasBoth || e.button === 1) {
     game.chord(row, col);
     startTimer();
+  } else if (e.shiftKey && e.button === 0 && !(buttonsDown & 2)) {
+    game.setQState(row, col, QMINE);
+  } else if (e.ctrlKey && e.button === 0 && !(buttonsDown & 2)) {
+    game.setQState(row, col, QEMPTY);
   } else if (e.button === 0 && !(buttonsDown & 2)) {
     game.reveal(row, col);
     startTimer();
