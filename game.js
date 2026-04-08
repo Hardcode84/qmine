@@ -14,12 +14,13 @@ export const QEMPTY = 4;
  * @param {number} mineCount - number of mines (0 ≤ n ≤ rows*cols-1)
  */
 export class Game {
-  constructor(rows, cols, mineCount) {
+  constructor(rows, cols, mineCount, { evilMode = false } = {}) {
     if (!Number.isInteger(rows) || rows <= 0) { throw new Error('rows must be a positive integer'); }
     if (!Number.isInteger(cols) || cols <= 0) { throw new Error('cols must be a positive integer'); }
     this.rows = rows;
     this.cols = cols;
     this.mineCount = Math.max(0, Math.min(mineCount, rows * cols - 1));
+    this.evilMode = evilMode;
     this.cells = [];
     this.started = false;
     this.gameOver = false;
@@ -61,6 +62,34 @@ export class Game {
 
   _inBounds(row, col) {
     return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
+  }
+
+  /** @returns {Array<{row:number, col:number, number:number}>} — empty when !started (no cells are REVEALED before game begins). */
+  _getRevealedConstraints() {
+    const revealed = [];
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        if (this.cells[r][c].state === REVEALED) {
+          revealed.push({ row: r, col: c, number: this.cells[r][c].number });
+        }
+      }
+    }
+    return revealed;
+  }
+
+  /** @returns {Array<[number, number]>} confirmed mine coords for solver forcedMine input. */
+  _confirmedMineCoords() {
+    return [...this.confirmedMines].map(k => [Math.floor(k / this.cols), k % this.cols]);
+  }
+
+  /** Solve for a mine layout with the given forced constraints. */
+  _solveLayout(forcedMine, forcedEmpty) {
+    return solve({
+      rows: this.rows, cols: this.cols, totalMines: this.mineCount,
+      revealed: this._getRevealedConstraints(),
+      forcedMine,
+      forcedEmpty,
+    });
   }
 
   /**
@@ -154,6 +183,11 @@ export class Game {
     const cell = this.cells[row][col];
     if (cell.state !== HIDDEN) return;
 
+    if (this.evilMode) {
+      this._evilReveal(row, col);
+      return;
+    }
+
     if (!this.started) { this._placeMines(row, col); }
 
     if (cell.mine) {
@@ -184,6 +218,48 @@ export class Game {
         }
       }
     }
+  }
+
+  /** Adversarial reveal: kills if any valid layout has a mine at (row, col). */
+  _evilReveal(row, col) {
+    const confirmed = this._confirmedMineCoords();
+
+    if (!this.started) {
+      const layout = this._solveLayout(confirmed, [[row, col]]);
+      if (!layout) {
+        this.gameOver = true;
+        this.decoherence = true;
+        this.endTime = Date.now();
+        return;
+      }
+      this._applyMineLayout(layout);
+      this.started = true;
+      this.startTime = Date.now();
+      this._floodFill(row, col);
+      this._checkWin();
+      return;
+    }
+
+    const deathLayout = this._solveLayout([...confirmed, [row, col]], []);
+    if (deathLayout) {
+      this._applyMineLayout(deathLayout);
+      this.cells[row][col].state = REVEALED;
+      this.gameOver = true;
+      this.endTime = Date.now();
+      return;
+    }
+
+    const safeLayout = this._solveLayout(confirmed, [[row, col]]);
+    if (safeLayout) {
+      this._applyMineLayout(safeLayout);
+      this._floodFill(row, col);
+      this._checkWin();
+      return;
+    }
+
+    this.gameOver = true;
+    this.decoherence = true;
+    this.endTime = Date.now();
   }
 
   cycleFlag(row, col) {
@@ -243,33 +319,6 @@ export class Game {
     return { qMines, qEmpties };
   }
 
-  _buildCollapseProblem(qMines, qEmpties) {
-    const revealed = [];
-    if (this.started) {
-      for (let r = 0; r < this.rows; r++) {
-        for (let c = 0; c < this.cols; c++) {
-          if (this.cells[r][c].state === REVEALED) {
-            revealed.push({ row: r, col: c, number: this.cells[r][c].number });
-          }
-        }
-      }
-    }
-
-    const forcedMine = [
-      ...[...this.confirmedMines].map(k => [Math.floor(k / this.cols), k % this.cols]),
-      ...qMines,
-    ];
-
-    return {
-      rows: this.rows,
-      cols: this.cols,
-      totalMines: this.mineCount,
-      revealed,
-      forcedMine,
-      forcedEmpty: qEmpties,
-    };
-  }
-
   _applyMineLayout(mineSet) {
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
@@ -309,8 +358,10 @@ export class Game {
       return { success: false, reason: 'no_qflags' };
     }
 
-    const problem = this._buildCollapseProblem(qMines, qEmpties);
-    const result = solve(problem);
+    const result = this._solveLayout(
+      [...this._confirmedMineCoords(), ...qMines],
+      qEmpties,
+    );
 
     if (result === null) {
       this.gameOver = true;

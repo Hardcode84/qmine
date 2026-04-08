@@ -193,6 +193,20 @@ body {
 
 .decoherence { color: #7c3aed !important; }
 
+#evil-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+#game.evil-mode #evil-label { color: #dc2626; }
+
+#game.evil-mode { border-color: #fca5a5; }
+#game.evil-mode #header { background: #fef2f2; }
+
 #instructions {
   max-width: 480px;
   margin-top: 12px;
@@ -229,6 +243,7 @@ body {
       <option value="expert">Expert (30×16)</option>
       <option value="brutal">Brutal (30×16, 140 mines)</option>
     </select>
+    <label id="evil-label"><input type="checkbox" id="evil-mode"> Evil mode</label>
     <div id="status-msg"></div>
   </div>
 </div>
@@ -247,6 +262,8 @@ body {
   you die (<span class="qm">quantum decoherence</span>).</p>
   <p><b>Header:</b> mines remaining (left), quantum score (center), timer in seconds (right).</p>
   <p><b>Score:</b> Q:N = number of q-flags used. Lower is better. Timer starts on first reveal.</p>
+  <p><b>Evil mode:</b> mines shift to kill you whenever possible.
+  The only safe reveals are cells provably mine-free. Use quantum flags to survive guesses!</p>
 </div>
 <script type="module" src="app.js"></script>
 </body>

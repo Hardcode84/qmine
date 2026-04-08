@@ -18,6 +18,8 @@ const collapseBtn = document.getElementById('collapse-btn');
 const newGameBtn = document.getElementById('new-game-btn');
 const difficultyEl = document.getElementById('difficulty');
 const statusEl = document.getElementById('status-msg');
+const gameEl = document.getElementById('game');
+const evilModeEl = document.getElementById('evil-mode');
 
 let game = null;
 let cellEls = [];
@@ -44,7 +46,7 @@ function newGame() {
   timerInterval = null;
   const d = DIFFICULTIES[difficultyEl.value];
   if (!d) return;
-  game = new Game(d.rows, d.cols, d.mines);
+  game = new Game(d.rows, d.cols, d.mines, { evilMode: evilModeEl.checked });
   buildBoard();
   render();
 }
@@ -86,6 +88,7 @@ function render() {
 
   const hasQ = game.hasQFlags() && !game.gameOver && !game.won;
   collapseBtn.classList.toggle('active', hasQ);
+  gameEl.classList.toggle('evil-mode', game.evilMode);
 
   if (game.won) {
     newGameBtn.textContent = '😎';
@@ -279,5 +282,6 @@ function clearHighlights() {
 collapseBtn.addEventListener('click', doCollapse);
 newGameBtn.addEventListener('click', newGame);
 difficultyEl.addEventListener('change', newGame);
+evilModeEl.addEventListener('change', newGame);
 
 newGame();
