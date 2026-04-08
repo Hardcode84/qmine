@@ -44,6 +44,7 @@ function showStatus(text, cls, temporary) {
 function newGame() {
   clearInterval(timerInterval);
   timerInterval = null;
+  resetTouch();
   const d = DIFFICULTIES[difficultyEl.value];
   if (!d) return;
   game = new Game(d.rows, d.cols, d.mines, { evilMode: evilModeEl.checked });
@@ -237,13 +238,24 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { buttonsDown = 0; }
 });
 
-// --- Touch handling ---
+// --- Touch handling (long press = flag cycle, tap = reveal/chord) ---
 const LONG_PRESS_MS = 300;
+const VIBRATE_MS = 50;
 let touchTimer = null;
 let touchCell = null;
 let touchHandled = false;
 
-function getCellFromTouch(touch) {
+function resetTouch() {
+  clearTimeout(touchTimer);
+  touchTimer = null;
+  if (touchCell && cellEls[touchCell.row]) {
+    cellEls[touchCell.row][touchCell.col].classList.remove('pressed');
+  }
+  touchCell = null;
+  touchHandled = false;
+}
+
+function getCellCoordsFromTouch(touch) {
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
   if (!el) { return null; }
   const cell = el.closest('.cell');
@@ -252,9 +264,12 @@ function getCellFromTouch(touch) {
 }
 
 boardEl.addEventListener('touchstart', e => {
-  if (e.touches.length !== 1) { return; }
+  if (e.touches.length !== 1) {
+    resetTouch();
+    return;
+  }
   e.preventDefault();
-  const pos = getCellFromTouch(e.touches[0]);
+  const pos = getCellCoordsFromTouch(e.touches[0]);
   touchCell = pos;
   touchHandled = false;
   if (!pos || game.gameOver || game.won) { return; }
@@ -262,39 +277,30 @@ boardEl.addEventListener('touchstart', e => {
   cellEls[pos.row][pos.col].classList.add('pressed');
 
   touchTimer = setTimeout(() => {
-    if (touchCell) {
-      game.cycleFlag(touchCell.row, touchCell.col);
-      render();
-      touchHandled = true;
-      if (navigator.vibrate) { navigator.vibrate(50); }
-    }
+    if (!touchCell || game.gameOver || game.won) { return; }
+    game.cycleFlag(touchCell.row, touchCell.col);
+    render();
+    touchHandled = true;
+    if (typeof navigator.vibrate === 'function') { navigator.vibrate(VIBRATE_MS); }
   }, LONG_PRESS_MS);
 }, { passive: false });
 
 boardEl.addEventListener('touchmove', e => {
-  if (!touchCell) { return; }
-  const pos = getCellFromTouch(e.touches[0]);
+  if (!touchCell || e.touches.length < 1) { return; }
+  const pos = getCellCoordsFromTouch(e.touches[0]);
   if (!pos || pos.row !== touchCell.row || pos.col !== touchCell.col) {
-    clearTimeout(touchTimer);
-    touchTimer = null;
-    cellEls[touchCell.row][touchCell.col].classList.remove('pressed');
+    resetTouch();
   }
 }, { passive: true });
 
 boardEl.addEventListener('touchend', e => {
   e.preventDefault();
-  clearTimeout(touchTimer);
-  touchTimer = null;
-  if (touchCell) {
-    cellEls[touchCell.row][touchCell.col].classList.remove('pressed');
-  }
-  if (touchHandled || !touchCell || game.gameOver || game.won) {
-    touchCell = null;
-    return;
-  }
-  const { row, col } = touchCell;
-  touchCell = null;
+  const pending = touchCell;
+  const handled = touchHandled;
+  resetTouch();
+  if (handled || !pending || game.gameOver || game.won) { return; }
 
+  const { row, col } = pending;
   const cell = game.cells[row][col];
   if (cell.state === REVEALED && cell.number > 0) {
     game.chord(row, col);
@@ -306,14 +312,7 @@ boardEl.addEventListener('touchend', e => {
   render();
 }, { passive: false });
 
-boardEl.addEventListener('touchcancel', () => {
-  clearTimeout(touchTimer);
-  touchTimer = null;
-  if (touchCell) {
-    cellEls[touchCell.row][touchCell.col].classList.remove('pressed');
-  }
-  touchCell = null;
-});
+boardEl.addEventListener('touchcancel', () => { resetTouch(); });
 
 document.addEventListener('keydown', e => {
   if (e.key === ' ' || e.key === 'Enter') {
