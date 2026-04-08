@@ -188,6 +188,25 @@ body {
   cursor: pointer;
 }
 
+#custom-fields {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #444;
+}
+#custom-fields.visible { display: flex; }
+#custom-fields input {
+  width: 48px;
+  font-size: 12px;
+  padding: 1px 3px;
+  background: #c0c0c0;
+  border: 2px inset #808080;
+  text-align: center;
+}
+#custom-fields span { padding: 0 1px; }
+
 #status-msg {
   font-size: 13px;
   font-weight: bold;
@@ -247,7 +266,16 @@ body {
       <option value="intermediate">Intermediate (16×16)</option>
       <option value="expert">Expert (30×16)</option>
       <option value="brutal">Brutal (30×16, 140 mines)</option>
+      <option value="custom">Custom…</option>
     </select>
+    <div id="custom-fields">
+      <input id="custom-cols" type="number" min="2" max="50" value="30">
+      <span>×</span>
+      <input id="custom-rows" type="number" min="2" max="50" value="16">
+      <span>/</span>
+      <input id="custom-mines" type="number" min="0" max="999" value="99">
+      <span>mines</span>
+    </div>
     <label id="evil-label"><input type="checkbox" id="evil-mode"> Evil mode</label>
     <div id="status-msg"></div>
   </div>

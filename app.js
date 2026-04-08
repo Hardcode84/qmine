@@ -20,6 +20,10 @@ const difficultyEl = document.getElementById('difficulty');
 const statusEl = document.getElementById('status-msg');
 const gameEl = document.getElementById('game');
 const evilModeEl = document.getElementById('evil-mode');
+const customFieldsEl = document.getElementById('custom-fields');
+const customRowsEl = document.getElementById('custom-rows');
+const customColsEl = document.getElementById('custom-cols');
+const customMinesEl = document.getElementById('custom-mines');
 
 let game = null;
 let cellEls = [];
@@ -41,11 +45,26 @@ function showStatus(text, cls, temporary) {
   }
 }
 
+function getDifficulty() {
+  if (difficultyEl.value === 'custom') {
+    const rows  = Math.max(2, Math.min(50, +customRowsEl.value || 9));
+    const cols  = Math.max(2, Math.min(50, +customColsEl.value || 9));
+    const mines = Math.max(0, Math.min(rows * cols - 1, +customMinesEl.value || 0));
+    return { rows, cols, mines };
+  }
+  return DIFFICULTIES[difficultyEl.value];
+}
+
+function updateCustomVisibility() {
+  customFieldsEl.classList.toggle('visible', difficultyEl.value === 'custom');
+}
+
 function newGame() {
   clearInterval(timerInterval);
   timerInterval = null;
   resetTouch();
-  const d = DIFFICULTIES[difficultyEl.value];
+  updateCustomVisibility();
+  const d = getDifficulty();
   if (!d) return;
   game = new Game(d.rows, d.cols, d.mines, { evilMode: evilModeEl.checked });
   buildBoard();
@@ -367,6 +386,9 @@ function clearHighlights() {
 collapseBtn.addEventListener('click', doCollapse);
 newGameBtn.addEventListener('click', newGame);
 difficultyEl.addEventListener('change', newGame);
+customRowsEl.addEventListener('change', newGame);
+customColsEl.addEventListener('change', newGame);
+customMinesEl.addEventListener('change', newGame);
 evilModeEl.addEventListener('change', newGame);
 
 newGame();
