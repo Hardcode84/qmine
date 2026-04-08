@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quantum Minesweeper</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #c0c0c0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#game {
+  background: #c0c0c0;
+  border: 3px outset #fff;
+  padding: 8px;
+}
+
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #c0c0c0;
+  border: 2px inset #808080;
+  padding: 4px 6px;
+  margin-bottom: 8px;
+}
+
+.counter {
+  background: #000;
+  color: #f00;
+  font-family: 'Courier New', monospace;
+  font-size: 24px;
+  font-weight: bold;
+  padding: 2px 4px;
+  min-width: 52px;
+  text-align: right;
+  border: 1px inset #808080;
+  letter-spacing: 2px;
+}
+
+#controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.header-btn {
+  font-size: 22px;
+  width: 36px;
+  height: 36px;
+  border: 2px outset #fff;
+  background: #c0c0c0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.header-btn:active { border-style: inset; }
+
+#collapse-btn {
+  font-size: 13px;
+  width: auto;
+  padding: 0 8px;
+  white-space: nowrap;
+  visibility: hidden;
+}
+#collapse-btn.active {
+  visibility: visible;
+  background: #d8b4fe;
+  border-color: #a855f7;
+}
+#collapse-btn.active:hover { background: #c084fc; }
+
+#quantum-score {
+  font-size: 11px;
+  font-weight: bold;
+  color: #6b21a8;
+  min-width: 36px;
+  text-align: center;
+}
+
+#board {
+  display: inline-grid;
+  border: 3px inset #808080;
+  background: #c0c0c0;
+}
+
+.cell {
+  width: 28px;
+  height: 28px;
+  border: 2px outset #fff;
+  background: #c0c0c0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.cell.revealed {
+  border: 1px solid #808080;
+  background: #d0d0d0;
+  cursor: default;
+}
+
+.cell.n1 { color: #0000ff; }
+.cell.n2 { color: #008000; }
+.cell.n3 { color: #ff0000; }
+.cell.n4 { color: #000080; }
+.cell.n5 { color: #800000; }
+.cell.n6 { color: #008080; }
+.cell.n7 { color: #000000; }
+.cell.n8 { color: #808080; }
+
+.cell.flagged { color: #cc0000; font-size: 16px; }
+.cell.qmine {
+  background: #e9d5ff;
+  border-color: #a855f7;
+  color: #7c3aed;
+  font-size: 16px;
+}
+.cell.qempty {
+  background: #cffafe;
+  border-color: #06b6d4;
+  color: #0891b2;
+  font-size: 14px;
+}
+
+.cell.quantum-resolved {
+  background: #ede9fe;
+}
+.cell.quantum-resolved.revealed {
+  background: #ede9fe;
+}
+
+.cell.exploded {
+  background: #ff0000;
+  border: 1px solid #808080;
+}
+
+.cell.mine-shown {
+  border: 1px solid #808080;
+  background: #d0d0d0;
+  font-size: 16px;
+}
+
+.cell.wrong-flag {
+  border: 1px solid #808080;
+  background: #d0d0d0;
+  color: #cc0000;
+  font-size: 14px;
+}
+
+.cell.confirmed-flag {
+  color: #059669;
+  font-size: 16px;
+}
+
+#footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 0 2px;
+}
+
+#difficulty {
+  font-size: 13px;
+  padding: 2px 4px;
+  background: #c0c0c0;
+  border: 2px inset #808080;
+  cursor: pointer;
+}
+
+#status-msg {
+  font-size: 13px;
+  font-weight: bold;
+  text-align: center;
+  min-height: 18px;
+  color: #333;
+}
+
+.decoherence { color: #7c3aed !important; }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="header">
+    <div class="counter" id="mine-counter">000</div>
+    <div id="controls">
+      <div id="quantum-score">Q:0</div>
+      <button class="header-btn" id="collapse-btn" title="Collapse quantum flags">⚛️</button>
+      <button class="header-btn" id="new-game-btn" title="New game">🙂</button>
+    </div>
+    <div class="counter" id="timer">000</div>
+  </div>
+  <div id="board"></div>
+  <div id="footer">
+    <select id="difficulty">
+      <option value="beginner">Beginner (9×9)</option>
+      <option value="intermediate">Intermediate (16×16)</option>
+      <option value="expert">Expert (30×16)</option>
+    </select>
+    <div id="status-msg"></div>
+  </div>
+</div>
+
+<script type="module">
+import { Game, HIDDEN, REVEALED, FLAGGED, QMINE, QEMPTY } from './game.js';
+
+const DIFFICULTIES = {
+  beginner:     { rows: 9,  cols: 9,  mines: 10 },
+  intermediate: { rows: 16, cols: 16, mines: 40 },
+  expert:       { rows: 16, cols: 30, mines: 99 },
+};
+
+const boardEl = document.getElementById('board');
+const mineCounterEl = document.getElementById('mine-counter');
+const timerEl = document.getElementById('timer');
+const qScoreEl = document.getElementById('quantum-score');
+const collapseBtn = document.getElementById('collapse-btn');
+const newGameBtn = document.getElementById('new-game-btn');
+const difficultyEl = document.getElementById('difficulty');
+const statusEl = document.getElementById('status-msg');
+
+let game = null;
+let cellEls = [];
+let timerInterval = null;
+let buttonsDown = 0;
+
+function newGame() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  const d = DIFFICULTIES[difficultyEl.value];
+  game = new Game(d.rows, d.cols, d.mines);
+  buildBoard();
+  render();
+}
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  boardEl.style.gridTemplateColumns = `repeat(${game.cols}, 28px)`;
+  cellEls = [];
+
+  for (let r = 0; r < game.rows; r++) {
+    const row = [];
+    for (let c = 0; c < game.cols; c++) {
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.row = r;
+      el.dataset.col = c;
+      boardEl.appendChild(el);
+      row.push(el);
+    }
+    cellEls.push(row);
+  }
+}
+
+function render() {
+  for (let r = 0; r < game.rows; r++) {
+    for (let c = 0; c < game.cols; c++) {
+      renderCell(r, c);
+    }
+  }
+
+  const rem = game.minesRemaining();
+  mineCounterEl.textContent = String(Math.max(rem, 0)).padStart(3, '0');
+  if (rem < 0) mineCounterEl.textContent = '-' + String(Math.abs(rem)).padStart(2, '0');
+
+  qScoreEl.textContent = `Q:${game.quantumScore}`;
+  collapseBtn.className = 'header-btn' + (game.hasQFlags() && !game.gameOver && !game.won ? ' active' : '');
+
+  if (game.won) {
+    newGameBtn.textContent = '😎';
+    statusEl.textContent = `Cleared! Quantum moves: ${game.quantumScore}`;
+    statusEl.className = '';
+  } else if (game.gameOver && game.decoherence) {
+    newGameBtn.textContent = '🌀';
+    statusEl.textContent = 'Quantum decoherence — no valid layout!';
+    statusEl.className = 'decoherence';
+  } else if (game.gameOver) {
+    newGameBtn.textContent = '💀';
+    statusEl.textContent = '';
+    statusEl.className = '';
+  } else {
+    newGameBtn.textContent = '🙂';
+    statusEl.textContent = '';
+    statusEl.className = '';
+  }
+
+  updateTimer();
+}
+
+function renderCell(r, c) {
+  const cell = game.cells[r][c];
+  const el = cellEls[r][c];
+  el.className = 'cell';
+  el.textContent = '';
+
+  if (game.gameOver && !game.decoherence) {
+    if (cell.state === REVEALED && cell.mine) {
+      el.classList.add('exploded');
+      el.textContent = '💣';
+      return;
+    }
+    if (cell.mine && cell.state !== FLAGGED) {
+      el.classList.add('mine-shown');
+      el.textContent = '💣';
+      return;
+    }
+    if ((cell.state === FLAGGED) && !cell.mine) {
+      el.classList.add('wrong-flag');
+      el.textContent = '🚩✕';
+      return;
+    }
+  }
+
+  switch (cell.state) {
+    case HIDDEN:
+      break;
+    case REVEALED:
+      el.classList.add('revealed');
+      if (cell.quantum) el.classList.add('quantum-resolved');
+      if (cell.number > 0) {
+        el.classList.add('n' + cell.number);
+        el.textContent = cell.number;
+      }
+      break;
+    case FLAGGED:
+      if (game.confirmedMines.has(game.key(r, c))) {
+        el.classList.add('confirmed-flag');
+        el.textContent = '⚑';
+      } else {
+        el.classList.add('flagged');
+        el.textContent = '🚩';
+      }
+      break;
+    case QMINE:
+      el.classList.add('qmine');
+      el.textContent = '⚑';
+      break;
+    case QEMPTY:
+      el.classList.add('qempty');
+      el.textContent = '◇';
+      break;
+  }
+}
+
+function updateTimer() {
+  timerEl.textContent = String(Math.min(game.elapsedSeconds(), 999)).padStart(3, '0');
+}
+
+function startTimer() {
+  if (timerInterval) return;
+  timerInterval = setInterval(() => {
+    if (game.gameOver || game.won) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    updateTimer();
+  }, 1000);
+}
+
+function getCellCoords(e) {
+  const el = e.target.closest('.cell');
+  if (!el) return null;
+  return { row: +el.dataset.row, col: +el.dataset.col };
+}
+
+boardEl.addEventListener('contextmenu', e => e.preventDefault());
+
+boardEl.addEventListener('mousedown', e => {
+  buttonsDown |= e.button === 0 ? 1 : e.button === 2 ? 2 : 4;
+  if (game.gameOver || game.won) return;
+
+  // Pressing on revealed cell: visual feedback for chord
+  const pos = getCellCoords(e);
+  if (pos && (buttonsDown & 3) === 3) {
+    highlightChordTargets(pos.row, pos.col);
+  }
+});
+
+boardEl.addEventListener('mouseup', e => {
+  const pos = getCellCoords(e);
+  const wasBoth = (buttonsDown & 3) === 3;
+  buttonsDown &= ~(e.button === 0 ? 1 : e.button === 2 ? 2 : 4);
+
+  if (!pos || game.gameOver || game.won) {
+    clearHighlights();
+    return;
+  }
+
+  const { row, col } = pos;
+
+  if (wasBoth || e.button === 1) {
+    game.chord(row, col);
+    startTimer();
+  } else if (e.button === 0 && !(buttonsDown & 2)) {
+    game.reveal(row, col);
+    startTimer();
+  } else if (e.button === 2 && !(buttonsDown & 1)) {
+    game.cycleFlag(row, col);
+  }
+
+  clearHighlights();
+  render();
+});
+
+boardEl.addEventListener('mouseleave', () => {
+  clearHighlights();
+});
+
+document.addEventListener('mouseup', e => {
+  buttonsDown &= ~(e.button === 0 ? 1 : e.button === 2 ? 2 : 4);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (!game.gameOver && !game.won && game.hasQFlags()) {
+      game.collapse();
+      startTimer();
+      render();
+    }
+  }
+  if (e.key === 'n' || e.key === 'F2') {
+    e.preventDefault();
+    newGame();
+  }
+});
+
+function highlightChordTargets(row, col) {
+  const cell = game.cells[row][col];
+  if (cell.state !== REVEALED) return;
+  for (const [nr, nc] of game.neighbors(row, col)) {
+    const n = game.cells[nr][nc];
+    if (n.state === HIDDEN || n.state === QEMPTY) {
+      cellEls[nr][nc].style.borderStyle = 'inset';
+    }
+  }
+  cellEls[row][col].style.borderStyle = 'inset';
+}
+
+function clearHighlights() {
+  for (let r = 0; r < game.rows; r++)
+    for (let c = 0; c < game.cols; c++)
+      cellEls[r][c].style.borderStyle = '';
+}
+
+collapseBtn.addEventListener('click', () => {
+  if (game.gameOver || game.won) return;
+  const result = game.collapse();
+  if (result.success) startTimer();
+  render();
+});
+
+newGameBtn.addEventListener('click', newGame);
+
+difficultyEl.addEventListener('change', newGame);
+
+newGame();
+</script>
+</body>
+</html>

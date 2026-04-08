@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Quantum Minesweeper — Solver Tests</title>
+  <style>
+    body { font-family: 'Courier New', monospace; margin: 20px; background: #1a1a2e; color: #e0e0e0; }
+    h2 { color: #a0a0ff; }
+    .pass { color: #4caf50; }
+    .fail { color: #f44336; font-weight: bold; }
+    .section { color: #64b5f6; font-weight: bold; margin-top: 0.5em; }
+    #summary { margin-top: 1em; font-size: 1.3em; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Solver Tests</h2>
+  <pre id="output"></pre>
+  <div id="summary"></div>
+  <script type="module">
+    import { solve, verify, neighbors } from './solver.js';
+
+    const output = document.getElementById('output');
+    const summaryEl = document.getElementById('summary');
+    let passed = 0, failed = 0;
+
+    function log(text, cls) {
+      const span = document.createElement('span');
+      span.textContent = text + '\n';
+      if (cls) span.className = cls;
+      output.appendChild(span);
+    }
+
+    function section(name) { log('\n' + name, 'section'); }
+
+    function assert(condition, msg) {
+      if (condition) { passed++; log('  ✓ ' + msg, 'pass'); }
+      else { failed++; log('  ✗ ' + msg, 'fail'); }
+    }
+
+    function solveAndVerify(params, msg) {
+      const result = solve(params);
+      assert(result !== null, msg + ' — has solution');
+      if (result) {
+        const v = verify({ ...params, mines: result });
+        assert(v.valid, msg + ' — valid: ' + (v.reason || 'ok'));
+      }
+      return result;
+    }
+
+    // ── Neighbors ──
+
+    section('Neighbors utility');
+    assert(neighbors(0, 0, 3, 3).length === 3, 'corner: 3 neighbors');
+    assert(neighbors(0, 1, 3, 3).length === 5, 'edge: 5 neighbors');
+    assert(neighbors(1, 1, 3, 3).length === 8, 'center: 8 neighbors');
+    assert(neighbors(0, 0, 1, 1).length === 0, '1×1 board: 0 neighbors');
+
+    // ── Basic solve ──
+
+    section('Empty board (no constraints)');
+    {
+      const r = solve({ rows: 3, cols: 3, totalMines: 1, revealed: [], forcedMine: [], forcedEmpty: [] });
+      assert(r !== null, 'has solution');
+      assert(r.size === 1, 'exactly 1 mine');
+    }
+
+    section('Zero mines');
+    {
+      const r = solve({ rows: 3, cols: 3, totalMines: 0, revealed: [], forcedMine: [], forcedEmpty: [] });
+      assert(r !== null, 'has solution');
+      assert(r.size === 0, '0 mines placed');
+    }
+
+    // ── Forced cells ──
+
+    section('Force mine at (0,0)');
+    {
+      const r = solve({ rows: 3, cols: 3, totalMines: 1, revealed: [], forcedMine: [[0, 0]], forcedEmpty: [] });
+      assert(r !== null, 'has solution');
+      assert(r.has(0), 'mine at cell 0');
+      assert(r.size === 1, 'exactly 1 mine');
+    }
+
+    section('Force empty at (0,0)');
+    {
+      const r = solve({ rows: 3, cols: 3, totalMines: 1, revealed: [], forcedMine: [], forcedEmpty: [[0, 0]] });
+      assert(r !== null, 'has solution');
+      assert(!r.has(0), 'no mine at cell 0');
+    }
+
+    section('Force all corners as mines');
+    {
+      const r = solve({
+        rows: 3, cols: 3, totalMines: 4, revealed: [],
+        forcedMine: [[0,0],[0,2],[2,0],[2,2]], forcedEmpty: []
+      });
+      assert(r !== null, 'has solution');
+      assert(r.has(0) && r.has(2) && r.has(6) && r.has(8), 'mines at all 4 corners');
+    }
+
+    // ── Contradictions ──
+
+    section('Contradiction: same cell forced mine and empty');
+    {
+      const r = solve({ rows: 3, cols: 3, totalMines: 1, revealed: [], forcedMine: [[0,0]], forcedEmpty: [[0,0]] });
+      assert(r === null, 'detected contradiction');
+    }
+
+    section('Contradiction: more forced mines than total');
+    {
+      const r = solve({ rows: 3, cols: 3, totalMines: 1, revealed: [], forcedMine: [[0,0],[0,1]], forcedEmpty: [] });
+      assert(r === null, 'detected too many forced mines');
+    }
+
+    section('Contradiction: mine forced next to revealed 0');
+    {
+      const r = solve({
+        rows: 3, cols: 3, totalMines: 1,
+        revealed: [{ row: 1, col: 1, number: 0 }],
+        forcedMine: [[0, 0]], forcedEmpty: []
+      });
+      assert(r === null, 'mine impossible next to 0');
+    }
+
+    section('Contradiction: all neighbors forced empty but number > 0');
+    {
+      const r = solve({
+        rows: 3, cols: 3, totalMines: 1,
+        revealed: [{ row: 1, col: 1, number: 1 }],
+        forcedMine: [],
+        forcedEmpty: [[0,0],[0,1],[0,2],[1,0],[1,2],[2,0],[2,1],[2,2]]
+      });
+      assert(r === null, 'no mine can satisfy number 1');
+    }
+
+    // ── Number constraints ──
+
+    section('Center revealed as 1 on 3×3');
+    solveAndVerify({
+      rows: 3, cols: 3, totalMines: 1,
+      revealed: [{ row: 1, col: 1, number: 1 }],
+      forcedMine: [], forcedEmpty: []
+    }, '3×3 center=1');
+
+    section('Center revealed as 8 on 3×3 (all neighbors mined)');
+    solveAndVerify({
+      rows: 3, cols: 3, totalMines: 8,
+      revealed: [{ row: 1, col: 1, number: 8 }],
+      forcedMine: [], forcedEmpty: []
+    }, '3×3 center=8');
+
+    section('Multiple revealed cells');
+    solveAndVerify({
+      rows: 5, cols: 5, totalMines: 4,
+      revealed: [
+        { row: 2, col: 2, number: 2 },
+        { row: 0, col: 0, number: 0 },
+        { row: 4, col: 4, number: 1 },
+      ],
+      forcedMine: [], forcedEmpty: []
+    }, '5×5 multi-reveal');
+
+    section('Revealed 0 forces all neighbors empty');
+    {
+      const r = solve({
+        rows: 3, cols: 3, totalMines: 0,
+        revealed: [{ row: 1, col: 1, number: 0 }],
+        forcedMine: [], forcedEmpty: []
+      });
+      assert(r !== null && r.size === 0, '0-cell means no mines around');
+    }
+
+    // ── Combined constraints + forced cells ──
+
+    section('Forced mine + number constraint interaction');
+    {
+      // 3×3, 1 mine, center=1, force mine at (0,0)
+      const r = solveAndVerify({
+        rows: 3, cols: 3, totalMines: 1,
+        revealed: [{ row: 1, col: 1, number: 1 }],
+        forcedMine: [[0, 0]], forcedEmpty: []
+      }, '3×3 center=1, mine at (0,0)');
+      if (r) assert(r.has(0), 'mine at (0,0) confirmed');
+    }
+
+    section('Forced empty narrows possibilities');
+    {
+      // 3×3, 1 mine, center=1, force empty on 7 of 8 neighbors → mine must be at remaining
+      const r = solve({
+        rows: 3, cols: 3, totalMines: 1,
+        revealed: [{ row: 1, col: 1, number: 1 }],
+        forcedMine: [],
+        forcedEmpty: [[0,0],[0,1],[0,2],[1,0],[1,2],[2,0],[2,1]]
+      });
+      assert(r !== null, 'has solution');
+      if (r) assert(r.has(8), 'mine forced to (2,2)');
+    }
+
+    // ── Fully determined board ──
+
+    section('Unique solution board');
+    {
+      // 3×3, 1 mine at (0,0). Reveal all non-mine cells.
+      // (0,0)=mine, (0,1)=1, (0,2)=0, (1,0)=1, (1,1)=1, (1,2)=0, (2,0)=0, (2,1)=0, (2,2)=0
+      const results = new Set();
+      for (let i = 0; i < 20; i++) {
+        const r = solve({
+          rows: 3, cols: 3, totalMines: 1,
+          revealed: [
+            { row: 0, col: 1, number: 1 },
+            { row: 0, col: 2, number: 0 },
+            { row: 1, col: 0, number: 1 },
+            { row: 1, col: 1, number: 1 },
+            { row: 1, col: 2, number: 0 },
+            { row: 2, col: 0, number: 0 },
+            { row: 2, col: 1, number: 0 },
+            { row: 2, col: 2, number: 0 },
+          ],
+          forcedMine: [], forcedEmpty: []
+        });
+        if (r) results.add([...r].join(','));
+      }
+      assert(results.size === 1, 'unique solution: always same layout');
+      assert(results.has('0'), 'mine at cell 0 = (0,0)');
+    }
+
+    // ── Randomness ──
+
+    section('Randomness: unconstrained board');
+    {
+      const layouts = new Set();
+      for (let i = 0; i < 50; i++) {
+        const r = solve({ rows: 3, cols: 3, totalMines: 1, revealed: [], forcedMine: [], forcedEmpty: [] });
+        if (r) layouts.add([...r].sort().join(','));
+      }
+      assert(layouts.size > 1, `${layouts.size} distinct layouts in 50 runs`);
+    }
+
+    section('Randomness: constrained board with multiple solutions');
+    {
+      const layouts = new Set();
+      for (let i = 0; i < 50; i++) {
+        const r = solve({
+          rows: 3, cols: 3, totalMines: 2,
+          revealed: [{ row: 1, col: 1, number: 2 }],
+          forcedMine: [], forcedEmpty: []
+        });
+        if (r) layouts.add([...r].sort().join(','));
+      }
+      assert(layouts.size > 1, `${layouts.size} distinct constrained layouts in 50 runs`);
+    }
+
+    // ── Performance: realistic mid-game expert ──
+
+    section('Performance: mid-game expert board');
+    {
+      const rows = 16, cols = 30, totalMines = 99;
+      const key = (r, c) => r * cols + c;
+
+      // Generate a random mine layout
+      const allCells = [];
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          allCells.push([r, c]);
+      for (let i = allCells.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allCells[i], allCells[j]] = [allCells[j], allCells[i]];
+      }
+      const realMines = new Set(allCells.slice(0, totalMines).map(([r,c]) => key(r,c)));
+
+      function trueNum(r, c) {
+        let n = 0;
+        for (const [nr, nc] of neighbors(r, c, rows, cols))
+          if (realMines.has(key(nr, nc))) n++;
+        return n;
+      }
+
+      // Flood-fill reveal from center
+      const revealed = [];
+      const visited = new Set();
+      const queue = [[8, 15]];
+      while (queue.length > 0 && revealed.length < 150) {
+        const [r, c] = queue.shift();
+        const k = key(r, c);
+        if (visited.has(k) || realMines.has(k)) continue;
+        if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+        visited.add(k);
+        const num = trueNum(r, c);
+        revealed.push({ row: r, col: c, number: num });
+        if (num === 0) {
+          for (const [nr, nc] of neighbors(r, c, rows, cols))
+            if (!visited.has(key(nr, nc))) queue.push([nr, nc]);
+        }
+      }
+
+      const start = performance.now();
+      const result = solve({ rows, cols, totalMines, revealed, forcedMine: [], forcedEmpty: [] });
+      const elapsed = performance.now() - start;
+
+      assert(result !== null, `expert mid-game (${revealed.length} revealed) has solution`);
+      assert(elapsed < 2000, `completed in ${elapsed.toFixed(1)}ms (< 2s)`);
+      if (result) {
+        const v = verify({ rows, cols, totalMines, revealed, forcedMine: [], forcedEmpty: [], mines: result });
+        assert(v.valid, 'layout valid: ' + (v.reason || 'ok'));
+      }
+    }
+
+    // ── Performance: expert with quantum flags ──
+
+    section('Performance: expert board with quantum flags');
+    {
+      const rows = 16, cols = 30, totalMines = 99;
+      const key = (r, c) => r * cols + c;
+
+      const allCells = [];
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          allCells.push([r, c]);
+      for (let i = allCells.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allCells[i], allCells[j]] = [allCells[j], allCells[i]];
+      }
+      const realMines = new Set(allCells.slice(0, totalMines).map(([r,c]) => key(r,c)));
+
+      function trueNum(r, c) {
+        let n = 0;
+        for (const [nr, nc] of neighbors(r, c, rows, cols))
+          if (realMines.has(key(nr, nc))) n++;
+        return n;
+      }
+
+      const revealed = [];
+      const visited = new Set();
+      const queue = [[8, 15]];
+      while (queue.length > 0 && revealed.length < 120) {
+        const [r, c] = queue.shift();
+        const k = key(r, c);
+        if (visited.has(k) || realMines.has(k)) continue;
+        if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+        visited.add(k);
+        const num = trueNum(r, c);
+        revealed.push({ row: r, col: c, number: num });
+        if (num === 0) {
+          for (const [nr, nc] of neighbors(r, c, rows, cols))
+            if (!visited.has(key(nr, nc))) queue.push([nr, nc]);
+        }
+      }
+
+      // Pick 2 boundary cells: one mine → q-mine, one safe → q-empty
+      const revealedSet = new Set(revealed.map(({ row, col }) => key(row, col)));
+      let qMine = null, qEmpty = null;
+      for (let r = 0; r < rows && (!qMine || !qEmpty); r++) {
+        for (let c = 0; c < cols && (!qMine || !qEmpty); c++) {
+          const k = key(r, c);
+          if (revealedSet.has(k)) continue;
+          if (!qMine && realMines.has(k)) qMine = [r, c];
+          if (!qEmpty && !realMines.has(k)) qEmpty = [r, c];
+        }
+      }
+
+      const forcedMine = qMine ? [qMine] : [];
+      const forcedEmpty = qEmpty ? [qEmpty] : [];
+
+      const start = performance.now();
+      const result = solve({ rows, cols, totalMines, revealed, forcedMine, forcedEmpty });
+      const elapsed = performance.now() - start;
+
+      assert(result !== null, 'expert with q-flags has solution');
+      assert(elapsed < 2000, `completed in ${elapsed.toFixed(1)}ms (< 2s)`);
+      if (result) {
+        const v = verify({ rows, cols, totalMines, revealed, forcedMine, forcedEmpty, mines: result });
+        assert(v.valid, 'layout valid: ' + (v.reason || 'ok'));
+      }
+    }
+
+    // ── Summary ──
+
+    summaryEl.textContent = `${passed} passed, ${failed} failed`;
+    summaryEl.className = failed === 0 ? 'pass' : 'fail';
+  </script>
+</body>
+</html>
