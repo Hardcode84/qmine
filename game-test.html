@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quantum Minesweeper — Game Tests</title>
+  <style>
+    body { font-family: 'Courier New', monospace; margin: 20px; background: #1a1a2e; color: #e0e0e0; }
+    h2 { color: #a0a0ff; }
+    .pass { color: #4caf50; }
+    .fail { color: #f44336; font-weight: bold; }
+    .section { color: #64b5f6; font-weight: bold; margin-top: 0.5em; }
+    #summary { margin-top: 1em; font-size: 1.3em; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Game Integration Tests</h2>
+  <pre id="output"></pre>
+  <div id="summary"></div>
+  <script type="module">
+    import { Game, HIDDEN, REVEALED, FLAGGED, QMINE, QEMPTY } from './game.js';
+
+    const output = document.getElementById('output');
+    const summaryEl = document.getElementById('summary');
+    let passed = 0, failed = 0;
+
+    function log(text, cls) {
+      const span = document.createElement('span');
+      span.textContent = text + '\n';
+      if (cls) { span.className = cls; }
+      output.appendChild(span);
+    }
+
+    function section(name) { log('\n' + name, 'section'); }
+
+    function assert(condition, msg) {
+      if (condition) { passed++; log('  ✓ ' + msg, 'pass'); }
+      else { failed++; log('  ✗ ' + msg, 'fail'); }
+    }
+
+    function countCells(game, pred) {
+      let n = 0;
+      for (let r = 0; r < game.rows; r++) {
+        for (let c = 0; c < game.cols; c++) {
+          if (pred(game.cells[r][c], r, c)) { n++; }
+        }
+      }
+      return n;
+    }
+
+    // ── Constructor validation ──
+
+    section('Constructor validation');
+    try { new Game(0, 9, 10); assert(false, 'should reject rows=0'); }
+    catch (e) { assert(true, 'rejects rows=0'); }
+    try { new Game(9, -1, 10); assert(false, 'should reject cols=-1'); }
+    catch (e) { assert(true, 'rejects cols=-1'); }
+    {
+      const g = new Game(3, 3, 100);
+      assert(g.mineCount === 8, `mineCount clamped to 8 (got ${g.mineCount})`);
+    }
+    {
+      const g = new Game(9, 9, -5);
+      assert(g.mineCount === 0, `negative mineCount clamped to 0 (got ${g.mineCount})`);
+    }
+
+    // ── First click & mine placement ──
+
+    section('First click — mine placement');
+    {
+      const g = new Game(9, 9, 10);
+      assert(!g.started, 'not started before first click');
+      g.reveal(4, 4);
+      assert(g.started, 'started after first click');
+      assert(!g.cells[4][4].mine, 'first click cell is safe');
+      assert(g.cells[4][4].state === REVEALED, 'first click cell is revealed');
+      const mines = countCells(g, c => c.mine);
+      assert(mines === 10, `10 mines placed (got ${mines})`);
+    }
+
+    // ── Flood fill ──
+
+    section('Flood fill');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      const revealed = countCells(g, c => c.state === REVEALED);
+      assert(revealed >= 1, `at least 1 cell revealed (got ${revealed})`);
+      // If first click is 0, flood fill should reveal multiple cells
+      if (g.cells[4][4].number === 0) {
+        assert(revealed > 1, 'flood fill expanded from 0-cell');
+      }
+    }
+
+    section('Flood fill does not overflow stack on large boards');
+    {
+      // 30×16 with 0 mines → entire board is 0s → flood fill reveals everything
+      const g = new Game(16, 30, 0);
+      g.reveal(8, 15);
+      const revealed = countCells(g, c => c.state === REVEALED);
+      assert(revealed === 480, `all 480 cells revealed (got ${revealed})`);
+    }
+
+    // ── Flag cycling ──
+
+    section('Flag cycling');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      // Find a hidden cell
+      let hr = -1, hc = -1;
+      for (let r = 0; r < 9 && hr < 0; r++) {
+        for (let c = 0; c < 9 && hr < 0; c++) {
+          if (g.cells[r][c].state === HIDDEN) { hr = r; hc = c; }
+        }
+      }
+      assert(hr >= 0, 'found hidden cell');
+
+      g.cycleFlag(hr, hc);
+      assert(g.cells[hr][hc].state === FLAGGED, 'cycle 1 → FLAGGED');
+      g.cycleFlag(hr, hc);
+      assert(g.cells[hr][hc].state === QMINE, 'cycle 2 → QMINE');
+      g.cycleFlag(hr, hc);
+      assert(g.cells[hr][hc].state === QEMPTY, 'cycle 3 → QEMPTY');
+      g.cycleFlag(hr, hc);
+      assert(g.cells[hr][hc].state === HIDDEN, 'cycle 4 → HIDDEN');
+    }
+
+    section('Cannot cycle flag on revealed cell');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      g.cycleFlag(4, 4);
+      assert(g.cells[4][4].state === REVEALED, 'revealed cell stays revealed');
+    }
+
+    // ── Chord ──
+
+    section('Chord');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      // Find a revealed cell with number > 0
+      let tr = -1, tc = -1;
+      for (let r = 0; r < 9 && tr < 0; r++) {
+        for (let c = 0; c < 9 && tr < 0; c++) {
+          if (g.cells[r][c].state === REVEALED && g.cells[r][c].number > 0) {
+            tr = r; tc = c;
+          }
+        }
+      }
+      if (tr >= 0) {
+        const beforeRevealed = countCells(g, c => c.state === REVEALED);
+        // Chord without enough flags does nothing
+        g.chord(tr, tc);
+        const afterRevealed = countCells(g, c => c.state === REVEALED);
+        assert(afterRevealed === beforeRevealed, 'chord with no flags does nothing');
+      } else {
+        assert(true, 'no numbered cell to test chord (skip)');
+      }
+    }
+
+    // ── hasQFlags ──
+
+    section('hasQFlags');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      assert(!g.hasQFlags(), 'no q-flags initially');
+      let hr = -1, hc = -1;
+      for (let r = 0; r < 9 && hr < 0; r++) {
+        for (let c = 0; c < 9 && hr < 0; c++) {
+          if (g.cells[r][c].state === HIDDEN) { hr = r; hc = c; }
+        }
+      }
+      g.cycleFlag(hr, hc); g.cycleFlag(hr, hc); // → QMINE
+      assert(g.hasQFlags(), 'has q-flags after QMINE');
+      g.cycleFlag(hr, hc); // → QEMPTY
+      assert(g.hasQFlags(), 'has q-flags after QEMPTY');
+      g.cycleFlag(hr, hc); // → HIDDEN
+      assert(!g.hasQFlags(), 'no q-flags after cycling back');
+    }
+
+    // ── Collapse: success ──
+
+    section('Collapse: success with q-empty on safe cell');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      // Find a hidden non-mine cell
+      let hr = -1, hc = -1;
+      for (let r = 0; r < 9 && hr < 0; r++) {
+        for (let c = 0; c < 9 && hr < 0; c++) {
+          if (g.cells[r][c].state === HIDDEN && !g.cells[r][c].mine) { hr = r; hc = c; }
+        }
+      }
+      assert(hr >= 0, 'found safe hidden cell');
+      g.cycleFlag(hr, hc); g.cycleFlag(hr, hc); g.cycleFlag(hr, hc); // → QEMPTY
+      const result = g.collapse();
+      assert(result.success, 'collapse succeeded');
+      assert(g.quantumScore === 1, `qScore=1 (got ${g.quantumScore})`);
+      assert(!g.gameOver, 'not game over');
+      assert(g.cells[hr][hc].state === REVEALED, 'q-empty cell is now revealed');
+    }
+
+    section('Collapse: success with q-mine on mine cell');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      let hr = -1, hc = -1;
+      for (let r = 0; r < 9 && hr < 0; r++) {
+        for (let c = 0; c < 9 && hr < 0; c++) {
+          if (g.cells[r][c].state === HIDDEN && g.cells[r][c].mine) { hr = r; hc = c; }
+        }
+      }
+      assert(hr >= 0, 'found mine hidden cell');
+      g.cycleFlag(hr, hc); g.cycleFlag(hr, hc); // → QMINE
+      const result = g.collapse();
+      assert(result.success, 'collapse succeeded');
+      assert(g.cells[hr][hc].state === FLAGGED, 'q-mine became flag');
+      assert(g.confirmedMines.has(g.key(hr, hc)), 'registered as confirmed mine');
+    }
+
+    // ── Collapse: no q-flags ──
+
+    section('Collapse: no q-flags');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      const result = g.collapse();
+      assert(!result.success, 'collapse failed');
+      assert(result.reason === 'no_qflags', `reason=no_qflags (got ${result.reason})`);
+      assert(!g.gameOver, 'not game over');
+    }
+
+    // ── Collapse: decoherence ──
+
+    section('Collapse: decoherence');
+    {
+      const g = new Game(5, 5, 5);
+      g.reveal(2, 2);
+      // Mark ALL hidden cells as q-empty → 5 mines have nowhere to go
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 5; c++) {
+          if (g.cells[r][c].state === HIDDEN) {
+            g.cycleFlag(r, c); g.cycleFlag(r, c); g.cycleFlag(r, c); // → QEMPTY
+          }
+        }
+      }
+      const result = g.collapse();
+      assert(!result.success, 'collapse failed');
+      assert(result.reason === 'decoherence', `reason=decoherence (got ${result.reason})`);
+      assert(g.gameOver, 'game over after decoherence');
+      assert(g.decoherence, 'decoherence flag set');
+    }
+
+    // ── Collapse: pre-start (first action is collapse) ──
+
+    section('Collapse: first action is collapse');
+    {
+      const g = new Game(9, 9, 10);
+      g.cycleFlag(0, 0); g.cycleFlag(0, 0); g.cycleFlag(0, 0); // → QEMPTY
+      const result = g.collapse();
+      assert(result.success, 'collapse succeeded');
+      assert(g.started, 'game started after collapse');
+      assert(!g.cells[0][0].mine, 'q-empty cell has no mine');
+      assert(g.cells[0][0].state === REVEALED, 'q-empty cell is revealed');
+      const mines = countCells(g, c => c.mine);
+      assert(mines === 10, `10 mines placed (got ${mines})`);
+    }
+
+    // ── Win detection ──
+
+    section('Win detection');
+    {
+      const g = new Game(3, 3, 1);
+      g.reveal(1, 1);
+      // If not yet won, reveal remaining hidden non-mine cells
+      if (!g.won) {
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            if (g.cells[r][c].state === HIDDEN && !g.cells[r][c].mine) {
+              g.reveal(r, c);
+            }
+          }
+        }
+      }
+      assert(g.won, 'game won when all non-mine cells revealed');
+    }
+
+    // ── Explosion ──
+
+    section('Hitting a mine');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      let mr = -1, mc = -1;
+      for (let r = 0; r < 9 && mr < 0; r++) {
+        for (let c = 0; c < 9 && mr < 0; c++) {
+          if (g.cells[r][c].state === HIDDEN && g.cells[r][c].mine) { mr = r; mc = c; }
+        }
+      }
+      assert(mr >= 0, 'found mine cell');
+      g.reveal(mr, mc);
+      assert(g.gameOver, 'game over after hitting mine');
+      assert(!g.decoherence, 'not decoherence');
+    }
+
+    // ── Bounds checking ──
+
+    section('Out-of-bounds calls do nothing');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      const before = countCells(g, c => c.state === REVEALED);
+      g.reveal(-1, 0);
+      g.reveal(0, 99);
+      g.cycleFlag(-1, 0);
+      g.chord(99, 99);
+      const after = countCells(g, c => c.state === REVEALED);
+      assert(after === before, 'no change from OOB calls');
+    }
+
+    // ── getCellView ──
+
+    section('getCellView returns correct view');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      const v = g.getCellView(4, 4);
+      assert(v.state === REVEALED, 'state is REVEALED');
+      assert(typeof v.number === 'number', 'number is a number');
+      assert(v.mine === false, 'first click is not a mine');
+      assert(v.quantum === false, 'not quantum');
+      assert(v.confirmedMine === false, 'not confirmed mine');
+    }
+
+    // ── minesRemaining ──
+
+    section('minesRemaining');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      assert(g.minesRemaining() === 10, 'initially 10');
+      let hr = -1, hc = -1;
+      for (let r = 0; r < 9 && hr < 0; r++) {
+        for (let c = 0; c < 9 && hr < 0; c++) {
+          if (g.cells[r][c].state === HIDDEN) { hr = r; hc = c; }
+        }
+      }
+      g.cycleFlag(hr, hc); // → FLAGGED
+      assert(g.minesRemaining() === 9, 'after 1 flag: 9');
+      g.cycleFlag(hr, hc); // → QMINE
+      assert(g.minesRemaining() === 9, 'QMINE also counts: 9');
+      g.cycleFlag(hr, hc); // → QEMPTY
+      assert(g.minesRemaining() === 10, 'QEMPTY does not count: 10');
+    }
+
+    // ── Reset ──
+
+    section('Reset');
+    {
+      const g = new Game(9, 9, 10);
+      g.reveal(4, 4);
+      g.reset();
+      assert(!g.started, 'not started after reset');
+      assert(!g.gameOver, 'not game over after reset');
+      assert(!g.won, 'not won after reset');
+      assert(g.quantumScore === 0, 'qScore reset');
+      const hidden = countCells(g, c => c.state === HIDDEN);
+      assert(hidden === 81, `all cells hidden (got ${hidden})`);
+    }
+
+    // ── Summary ──
+
+    summaryEl.textContent = `${passed} passed, ${failed} failed`;
+    summaryEl.className = failed === 0 ? 'pass' : 'fail';
+  </script>
+</body>
+</html>

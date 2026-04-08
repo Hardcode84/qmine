@@ -7,6 +7,8 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+:root { --cell-size: 28px; }
+
 body {
   background: #c0c0c0;
   font-family: 'Segoe UI', Arial, sans-serif;
@@ -97,8 +99,8 @@ body {
 }
 
 .cell {
-  width: 28px;
-  height: 28px;
+  width: var(--cell-size);
+  height: var(--cell-size);
   border: 2px outset #fff;
   background: #c0c0c0;
   display: flex;
@@ -139,12 +141,8 @@ body {
   font-size: 14px;
 }
 
-.cell.quantum-resolved {
-  background: #ede9fe;
-}
-.cell.quantum-resolved.revealed {
-  background: #ede9fe;
-}
+.cell.quantum-resolved { background: #ede9fe; }
+.cell.quantum-resolved.revealed { background: #ede9fe; }
 
 .cell.exploded {
   background: #ff0000;
@@ -202,8 +200,8 @@ body {
     <div class="counter" id="mine-counter">000</div>
     <div id="controls">
       <div id="quantum-score">Q:0</div>
-      <button class="header-btn" id="collapse-btn" title="Collapse quantum flags">⚛️</button>
-      <button class="header-btn" id="new-game-btn" title="New game">🙂</button>
+      <button class="header-btn" id="collapse-btn" title="Collapse quantum flags (Space)">⚛️</button>
+      <button class="header-btn" id="new-game-btn" title="New game (N)">🙂</button>
     </div>
     <div class="counter" id="timer">000</div>
   </div>
@@ -217,261 +215,6 @@ body {
     <div id="status-msg"></div>
   </div>
 </div>
-
-<script type="module">
-import { Game, HIDDEN, REVEALED, FLAGGED, QMINE, QEMPTY } from './game.js';
-
-const DIFFICULTIES = {
-  beginner:     { rows: 9,  cols: 9,  mines: 10 },
-  intermediate: { rows: 16, cols: 16, mines: 40 },
-  expert:       { rows: 16, cols: 30, mines: 99 },
-};
-
-const boardEl = document.getElementById('board');
-const mineCounterEl = document.getElementById('mine-counter');
-const timerEl = document.getElementById('timer');
-const qScoreEl = document.getElementById('quantum-score');
-const collapseBtn = document.getElementById('collapse-btn');
-const newGameBtn = document.getElementById('new-game-btn');
-const difficultyEl = document.getElementById('difficulty');
-const statusEl = document.getElementById('status-msg');
-
-let game = null;
-let cellEls = [];
-let timerInterval = null;
-let buttonsDown = 0;
-
-function newGame() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  const d = DIFFICULTIES[difficultyEl.value];
-  game = new Game(d.rows, d.cols, d.mines);
-  buildBoard();
-  render();
-}
-
-function buildBoard() {
-  boardEl.innerHTML = '';
-  boardEl.style.gridTemplateColumns = `repeat(${game.cols}, 28px)`;
-  cellEls = [];
-
-  for (let r = 0; r < game.rows; r++) {
-    const row = [];
-    for (let c = 0; c < game.cols; c++) {
-      const el = document.createElement('div');
-      el.className = 'cell';
-      el.dataset.row = r;
-      el.dataset.col = c;
-      boardEl.appendChild(el);
-      row.push(el);
-    }
-    cellEls.push(row);
-  }
-}
-
-function render() {
-  for (let r = 0; r < game.rows; r++) {
-    for (let c = 0; c < game.cols; c++) {
-      renderCell(r, c);
-    }
-  }
-
-  const rem = game.minesRemaining();
-  mineCounterEl.textContent = String(Math.max(rem, 0)).padStart(3, '0');
-  if (rem < 0) mineCounterEl.textContent = '-' + String(Math.abs(rem)).padStart(2, '0');
-
-  qScoreEl.textContent = `Q:${game.quantumScore}`;
-  collapseBtn.className = 'header-btn' + (game.hasQFlags() && !game.gameOver && !game.won ? ' active' : '');
-
-  if (game.won) {
-    newGameBtn.textContent = '😎';
-    statusEl.textContent = `Cleared! Quantum moves: ${game.quantumScore}`;
-    statusEl.className = '';
-  } else if (game.gameOver && game.decoherence) {
-    newGameBtn.textContent = '🌀';
-    statusEl.textContent = 'Quantum decoherence — no valid layout!';
-    statusEl.className = 'decoherence';
-  } else if (game.gameOver) {
-    newGameBtn.textContent = '💀';
-    statusEl.textContent = '';
-    statusEl.className = '';
-  } else {
-    newGameBtn.textContent = '🙂';
-    statusEl.textContent = '';
-    statusEl.className = '';
-  }
-
-  updateTimer();
-}
-
-function renderCell(r, c) {
-  const cell = game.cells[r][c];
-  const el = cellEls[r][c];
-  el.className = 'cell';
-  el.textContent = '';
-
-  if (game.gameOver && !game.decoherence) {
-    if (cell.state === REVEALED && cell.mine) {
-      el.classList.add('exploded');
-      el.textContent = '💣';
-      return;
-    }
-    if (cell.mine && cell.state !== FLAGGED) {
-      el.classList.add('mine-shown');
-      el.textContent = '💣';
-      return;
-    }
-    if ((cell.state === FLAGGED) && !cell.mine) {
-      el.classList.add('wrong-flag');
-      el.textContent = '🚩✕';
-      return;
-    }
-  }
-
-  switch (cell.state) {
-    case HIDDEN:
-      break;
-    case REVEALED:
-      el.classList.add('revealed');
-      if (cell.quantum) el.classList.add('quantum-resolved');
-      if (cell.number > 0) {
-        el.classList.add('n' + cell.number);
-        el.textContent = cell.number;
-      }
-      break;
-    case FLAGGED:
-      if (game.confirmedMines.has(game.key(r, c))) {
-        el.classList.add('confirmed-flag');
-        el.textContent = '⚑';
-      } else {
-        el.classList.add('flagged');
-        el.textContent = '🚩';
-      }
-      break;
-    case QMINE:
-      el.classList.add('qmine');
-      el.textContent = '⚑';
-      break;
-    case QEMPTY:
-      el.classList.add('qempty');
-      el.textContent = '◇';
-      break;
-  }
-}
-
-function updateTimer() {
-  timerEl.textContent = String(Math.min(game.elapsedSeconds(), 999)).padStart(3, '0');
-}
-
-function startTimer() {
-  if (timerInterval) return;
-  timerInterval = setInterval(() => {
-    if (game.gameOver || game.won) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-    }
-    updateTimer();
-  }, 1000);
-}
-
-function getCellCoords(e) {
-  const el = e.target.closest('.cell');
-  if (!el) return null;
-  return { row: +el.dataset.row, col: +el.dataset.col };
-}
-
-boardEl.addEventListener('contextmenu', e => e.preventDefault());
-
-boardEl.addEventListener('mousedown', e => {
-  buttonsDown |= e.button === 0 ? 1 : e.button === 2 ? 2 : 4;
-  if (game.gameOver || game.won) return;
-
-  // Pressing on revealed cell: visual feedback for chord
-  const pos = getCellCoords(e);
-  if (pos && (buttonsDown & 3) === 3) {
-    highlightChordTargets(pos.row, pos.col);
-  }
-});
-
-boardEl.addEventListener('mouseup', e => {
-  const pos = getCellCoords(e);
-  const wasBoth = (buttonsDown & 3) === 3;
-  buttonsDown &= ~(e.button === 0 ? 1 : e.button === 2 ? 2 : 4);
-
-  if (!pos || game.gameOver || game.won) {
-    clearHighlights();
-    return;
-  }
-
-  const { row, col } = pos;
-
-  if (wasBoth || e.button === 1) {
-    game.chord(row, col);
-    startTimer();
-  } else if (e.button === 0 && !(buttonsDown & 2)) {
-    game.reveal(row, col);
-    startTimer();
-  } else if (e.button === 2 && !(buttonsDown & 1)) {
-    game.cycleFlag(row, col);
-  }
-
-  clearHighlights();
-  render();
-});
-
-boardEl.addEventListener('mouseleave', () => {
-  clearHighlights();
-});
-
-document.addEventListener('mouseup', e => {
-  buttonsDown &= ~(e.button === 0 ? 1 : e.button === 2 ? 2 : 4);
-});
-
-document.addEventListener('keydown', e => {
-  if (e.key === ' ' || e.key === 'Enter') {
-    e.preventDefault();
-    if (!game.gameOver && !game.won && game.hasQFlags()) {
-      game.collapse();
-      startTimer();
-      render();
-    }
-  }
-  if (e.key === 'n' || e.key === 'F2') {
-    e.preventDefault();
-    newGame();
-  }
-});
-
-function highlightChordTargets(row, col) {
-  const cell = game.cells[row][col];
-  if (cell.state !== REVEALED) return;
-  for (const [nr, nc] of game.neighbors(row, col)) {
-    const n = game.cells[nr][nc];
-    if (n.state === HIDDEN || n.state === QEMPTY) {
-      cellEls[nr][nc].style.borderStyle = 'inset';
-    }
-  }
-  cellEls[row][col].style.borderStyle = 'inset';
-}
-
-function clearHighlights() {
-  for (let r = 0; r < game.rows; r++)
-    for (let c = 0; c < game.cols; c++)
-      cellEls[r][c].style.borderStyle = '';
-}
-
-collapseBtn.addEventListener('click', () => {
-  if (game.gameOver || game.won) return;
-  const result = game.collapse();
-  if (result.success) startTimer();
-  render();
-});
-
-newGameBtn.addEventListener('click', newGame);
-
-difficultyEl.addEventListener('change', newGame);
-
-newGame();
-</script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
