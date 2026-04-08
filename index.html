@@ -96,6 +96,7 @@ body {
   display: inline-grid;
   border: 3px inset #808080;
   background: #c0c0c0;
+  touch-action: none;
 }
 
 .cell {
@@ -165,6 +166,10 @@ body {
 .cell.confirmed-flag {
   color: #059669;
   font-size: 16px;
+}
+
+.cell.pressed {
+  border-style: inset;
 }
 
 #footer {
@@ -256,6 +261,8 @@ body {
     <tr><td>Both / Middle</td><td>Chord (reveal neighbors if flags match number)</td></tr>
     <tr><td>⚛️ / Space</td><td>Collapse — board reshuffles to satisfy all q-flags</td></tr>
     <tr><td>N / F2</td><td>New game</td></tr>
+    <tr><td>Tap (mobile)</td><td>Reveal cell; on a number, chord</td></tr>
+    <tr><td>Long press</td><td>Cycle flags (= right click)</td></tr>
   </table>
   <p><b>Goal:</b> clear the board. Use q-flags when you'd have to guess — the board
   will rearrange mines to make your assertions true. If no valid layout exists,

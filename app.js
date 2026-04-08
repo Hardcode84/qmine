@@ -237,6 +237,84 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { buttonsDown = 0; }
 });
 
+// --- Touch handling ---
+const LONG_PRESS_MS = 300;
+let touchTimer = null;
+let touchCell = null;
+let touchHandled = false;
+
+function getCellFromTouch(touch) {
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  if (!el) { return null; }
+  const cell = el.closest('.cell');
+  if (!cell) { return null; }
+  return { row: +cell.dataset.row, col: +cell.dataset.col };
+}
+
+boardEl.addEventListener('touchstart', e => {
+  if (e.touches.length !== 1) { return; }
+  e.preventDefault();
+  const pos = getCellFromTouch(e.touches[0]);
+  touchCell = pos;
+  touchHandled = false;
+  if (!pos || game.gameOver || game.won) { return; }
+
+  cellEls[pos.row][pos.col].classList.add('pressed');
+
+  touchTimer = setTimeout(() => {
+    if (touchCell) {
+      game.cycleFlag(touchCell.row, touchCell.col);
+      render();
+      touchHandled = true;
+      if (navigator.vibrate) { navigator.vibrate(50); }
+    }
+  }, LONG_PRESS_MS);
+}, { passive: false });
+
+boardEl.addEventListener('touchmove', e => {
+  if (!touchCell) { return; }
+  const pos = getCellFromTouch(e.touches[0]);
+  if (!pos || pos.row !== touchCell.row || pos.col !== touchCell.col) {
+    clearTimeout(touchTimer);
+    touchTimer = null;
+    cellEls[touchCell.row][touchCell.col].classList.remove('pressed');
+  }
+}, { passive: true });
+
+boardEl.addEventListener('touchend', e => {
+  e.preventDefault();
+  clearTimeout(touchTimer);
+  touchTimer = null;
+  if (touchCell) {
+    cellEls[touchCell.row][touchCell.col].classList.remove('pressed');
+  }
+  if (touchHandled || !touchCell || game.gameOver || game.won) {
+    touchCell = null;
+    return;
+  }
+  const { row, col } = touchCell;
+  touchCell = null;
+
+  const cell = game.cells[row][col];
+  if (cell.state === REVEALED && cell.number > 0) {
+    game.chord(row, col);
+    startTimer();
+  } else if (cell.state === HIDDEN) {
+    game.reveal(row, col);
+    startTimer();
+  }
+  render();
+}, { passive: false });
+
+boardEl.addEventListener('touchcancel', () => {
+  clearTimeout(touchTimer);
+  touchTimer = null;
+  if (touchCell) {
+    cellEls[touchCell.row][touchCell.col].classList.remove('pressed');
+  }
+  touchCell = null;
+});
+
 document.addEventListener('keydown', e => {
   if (e.key === ' ' || e.key === 'Enter') {
     e.preventDefault();
