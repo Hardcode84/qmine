@@ -97,6 +97,7 @@ function render() {
     showStatus('Hit a mine!', '');
   } else {
     newGameBtn.textContent = '🙂';
+    showStatus('', '');
   }
 
   updateTimer();
