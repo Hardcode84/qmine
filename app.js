@@ -193,8 +193,16 @@ boardEl.addEventListener('mousedown', e => {
   if (game.gameOver || game.won) return;
 
   const pos = getCellCoords(e);
-  if (pos && (buttonsDown & 3) === 3) {
+  if (!pos) return;
+
+  if ((buttonsDown & 3) === 3) {
     highlightChordTargets(pos.row, pos.col);
+  } else if (e.shiftKey && e.button === 0) {
+    game.setQState(pos.row, pos.col, QMINE);
+    doCollapse();
+  } else if (e.ctrlKey && e.button === 0) {
+    game.setQState(pos.row, pos.col, QEMPTY);
+    doCollapse();
   }
 });
 
@@ -213,11 +221,7 @@ boardEl.addEventListener('mouseup', e => {
   if (wasBoth || e.button === 1) {
     game.chord(row, col);
     startTimer();
-  } else if (e.shiftKey && e.button === 0 && !(buttonsDown & 2)) {
-    game.setQState(row, col, QMINE);
-  } else if (e.ctrlKey && e.button === 0 && !(buttonsDown & 2)) {
-    game.setQState(row, col, QEMPTY);
-  } else if (e.button === 0 && !(buttonsDown & 2)) {
+  } else if (e.button === 0 && !(buttonsDown & 2) && !e.shiftKey && !e.ctrlKey) {
     game.reveal(row, col);
     startTimer();
   } else if (e.button === 2 && !(buttonsDown & 1)) {
